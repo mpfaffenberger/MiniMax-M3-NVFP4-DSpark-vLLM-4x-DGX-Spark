@@ -40,14 +40,13 @@ The recipe uses:
 - 262,144 maximum model length
 - 8,192 maximum batched tokens
 - 4 maximum sequences
-- breakable piecewise CUDA graphs around eager attention boundaries
+- eager execution on the native multi-node TP backend
 
-The first validated benchmark checkpoint used eager execution. MiniMax-M3 is
-not annotated for vLLM's `torch.compile` pipeline, so vLLM automatically uses
-its breakable CUDA-graph path instead. DSpark verification has a uniform query
-length greater than one, which FlashInfer cannot capture as a full decode graph;
-the recipe therefore requests `PIECEWISE` explicitly rather than allowing the
-default full mode to downgrade graph capture to `NONE`.
+A controlled native-TP experiment successfully enabled vLLM's breakable
+`PIECEWISE` CUDA graphs for the target while leaving DSpark eager. It passed all
+correctness gates but regressed matched llama-benchy decode throughput by
+33–54%, so the production recipe remains eager. See the benchmark checkpoint
+for evidence rather than assuming every graph is automatically faster.
 
 Validated host memory after startup was approximately 89–93 GiB used per node,
 leaving 28–31 GiB available. Unified-memory systems have very little patience

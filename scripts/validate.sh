@@ -20,13 +20,11 @@ required = (
     '--reasoning-parser minimax_m3',
     '--tool-call-parser minimax_m3',
     '--kv-cache-dtype fp8',
-    '"cudagraph_mode":"PIECEWISE"',
+    '--enforce-eager',
 )
 missing = [marker for marker in required if marker not in text]
 if missing:
     raise SystemExit(f"recipe is missing: {missing}")
-if '--enforce-eager' in text:
-    raise SystemExit("recipe unexpectedly disables compilation with --enforce-eager")
 PY
 
 expected="cfda01f2ba3ebdb4b7970c0b140be8874eba5f43087682424e50e141fd51df78"

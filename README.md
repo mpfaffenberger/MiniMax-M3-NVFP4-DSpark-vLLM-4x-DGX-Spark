@@ -196,7 +196,7 @@ validates typed JSON arguments with a weather-tool fixture.
 | Max sequences | 4 |
 | GPU memory utilization | 0.80 |
 | Load format | InstantTensor |
-| Execution | breakable piecewise CUDA graphs |
+| Execution | eager (native TP) |
 
 The exact source of truth is
 [`recipes/minimax-m3-nvidia-nvfp4-dspark.yaml`](recipes/minimax-m3-nvidia-nvfp4-dspark.yaml).
