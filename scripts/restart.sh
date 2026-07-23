@@ -13,7 +13,7 @@ free -h
 
 while IFS= read -r worker; do
     echo "Reclaiming unified-memory page cache on ${worker}..."
-    ssh -o BatchMode=yes "${worker}" \
+    ssh -n -o BatchMode=yes "${worker}" \
         "sudo -n sh -c '${reclaim}'; free -h"
 done < <(worker_nodes)
 
