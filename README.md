@@ -66,7 +66,7 @@ Spark by changing a flag is not optimization; it is fiction with YAML syntax.
 
 ```bash
 git clone <this-repository-url>
-cd MiniMax-M3-NVFP4-DSpark-vLLM-Ray-4x-DGX-Spark
+cd MiniMax-M3-NVFP4-DSpark-vLLM-4x-DGX-Spark
 cp .env.example .env
 $EDITOR .env
 ```
