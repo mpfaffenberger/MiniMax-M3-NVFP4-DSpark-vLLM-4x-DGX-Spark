@@ -26,18 +26,20 @@ Measured with llama-benchy 0.4.0 on a four-node GB10 cluster on 2026-07-23:
 
 | Metric | Result |
 |---|---:|
-| Decode, depth 0 / C1 | **36.70 tok/s** |
-| Aggregate decode, depth 0 / C5 | **50.91 tok/s** |
-| Aggregate decode, depth 4096 / C5 | **47.54 tok/s** |
-| Peak decode, depth 4096 / C5 | **97.33 tok/s** |
-| Context prefill, depth 4096 / C1 | **2,255.7 tok/s** |
-| Successful quick-benchmark requests | **54/54** |
+| Decode, depth 0 / C1 | **38.99 tok/s** |
+| Aggregate decode, depth 0 / C5 | **56.89 tok/s** |
+| Aggregate decode, depth 4096 / C5 | **53.97 tok/s** |
+| Peak decode, depth 4096 / C10 | **108.33 tok/s** |
+| Decode, depth 100k / C1 | **29.64 tok/s** |
+| Context prefill, depth 16k / C1 | **2,386.1 tok/s** |
+| Successful full-benchmark requests | **702/702** |
 | Server/OOM/NVRM errors | **0** |
 
 These are observed results, not an enchanted marketing benchmark. Prompt shape,
 output length, concurrency, cache warmth, and fabric quality all matter. See the
-[`native eager checkpoint`](benchmarks/2026-07-23-native-eager-quick.md) and the
-original [`Ray baseline`](benchmarks/2026-07-23-validated-checkpoint.md).
+[`full native eager checkpoint`](benchmarks/2026-07-23-native-eager-full.md), the
+[`CUDA-graph comparison`](benchmarks/2026-07-23-native-piecewise-cudagraph-quick.md),
+and the original [`Ray baseline`](benchmarks/2026-07-23-validated-checkpoint.md).
 
 ## Architecture
 
