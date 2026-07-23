@@ -36,13 +36,13 @@ defaults:
   max_model_len: 262144
   max_num_batched_tokens: 8192
   max_num_seqs: 4
-  target_model: /root/.cache/huggingface/hub/models--nvidia--MiniMax-M3-NVFP4/snapshots/901464083161bf8612a29ff7ad29914cd4ab4a85
-  draft_model: /root/.cache/huggingface/hub/models--nvidia--MiniMax-M3-DSpark/snapshots/e82db0e1895bc4e0c339ce670b2b553899a57f59
+  target_model: nvidia/MiniMax-M3-NVFP4
+  target_revision: 901464083161bf8612a29ff7ad29914cd4ab4a85
+  draft_model: nvidia/MiniMax-M3-DSpark
+  draft_revision: e82db0e1895bc4e0c339ce670b2b553899a57f59
   num_speculative_tokens: 8
 
 env:
-  HF_HUB_OFFLINE: "1"
-  TRANSFORMERS_OFFLINE: "1"
   PYTORCH_CUDA_ALLOC_CONF: expandable_segments:False
   NCCL_CUMEM_ENABLE: "0"
   NCCL_NVLS_ENABLE: "0"
@@ -54,6 +54,7 @@ env:
 
 command: |
   vllm serve {target_model} \
+      --revision {target_revision} \
       --served-model-name {served_model_name} \
       --trust-remote-code \
       --block-size 128 \
@@ -71,4 +72,4 @@ command: |
       --reasoning-parser minimax_m3 \
       --enable-auto-tool-choice \
       --tool-call-parser minimax_m3 \
-      --speculative-config '{{"method":"dspark","model":"{draft_model}","num_speculative_tokens":{num_speculative_tokens}}}'
+      --speculative-config '{{"method":"dspark","model":"{draft_model}","revision":"{draft_revision}","num_speculative_tokens":{num_speculative_tokens}}}'

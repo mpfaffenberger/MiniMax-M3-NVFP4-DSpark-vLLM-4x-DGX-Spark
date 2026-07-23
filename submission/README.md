@@ -62,9 +62,11 @@ results.csv SHA-256:
 0dc298fc7c57ca5de91ee066fa1155b14746b53f33cca4c39c139eabc7c511ed
 ```
 
-The submission recipe is intentionally byte-identical to
-`recipes/minimax-m3-nvidia-nvfp4-dspark.yaml`. Static validation fails if they
-drift apart.
+The submission recipe uses portable Hugging Face IDs pinned to the exact target
+and draft revisions used by the benchmark. The production recipe intentionally
+retains direct local snapshot paths and offline mode for the original cluster.
+Static validation checks that performance-critical settings remain aligned while
+rejecting machine-specific cache paths in the submission recipe.
 
 Detailed interpretation and headline metrics are in
 [`../benchmarks/2026-07-23-native-eager-full.md`](../benchmarks/2026-07-23-native-eager-full.md).

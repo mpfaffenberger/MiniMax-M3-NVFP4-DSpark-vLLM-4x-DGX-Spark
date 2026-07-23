@@ -11,28 +11,46 @@ for script in "${ROOT}"/scripts/*.sh "${ROOT}"/mods/*/run.sh; do
 done
 
 python3 -m py_compile "${ROOT}/scripts/metrics.py" "${ROOT}/scripts/smoke.py"
-python3 - <<'PY' "${ROOT}/recipes/minimax-m3-nvidia-nvfp4-dspark.yaml"
+python3 - <<'PY' \
+    "${ROOT}/recipes/minimax-m3-nvidia-nvfp4-dspark.yaml" \
+    "${ROOT}/submission/recipe.yaml"
 import sys
 from pathlib import Path
-text = Path(sys.argv[1]).read_text()
-required = (
+
+production = Path(sys.argv[1]).read_text()
+submission = Path(sys.argv[2]).read_text()
+common = (
     '"method":"dspark"',
     '--reasoning-parser minimax_m3',
     '--tool-call-parser minimax_m3',
     '--kv-cache-dtype fp8',
     '--enforce-eager',
+    'tensor_parallel: 4',
+    'max_model_len: 262144',
 )
-missing = [marker for marker in required if marker not in text]
-if missing:
-    raise SystemExit(f"recipe is missing: {missing}")
-PY
+for name, text in (("production", production), ("submission", submission)):
+    missing = [marker for marker in common if marker not in text]
+    if missing:
+        raise SystemExit(f"{name} recipe is missing: {missing}")
 
-cmp -s \
-    "${ROOT}/recipes/minimax-m3-nvidia-nvfp4-dspark.yaml" \
-    "${ROOT}/submission/recipe.yaml" || {
-    echo "submission/recipe.yaml drifted from the production recipe" >&2
-    exit 1
-}
+if "/root/.cache/huggingface/" not in production:
+    raise SystemExit("production recipe must retain direct local cache paths")
+submission_required = (
+    "target_model: nvidia/MiniMax-M3-NVFP4",
+    "target_revision: 901464083161bf8612a29ff7ad29914cd4ab4a85",
+    "draft_model: nvidia/MiniMax-M3-DSpark",
+    "draft_revision: e82db0e1895bc4e0c339ce670b2b553899a57f59",
+    "--revision {target_revision}",
+    '"revision":"{draft_revision}"',
+)
+missing = [marker for marker in submission_required if marker not in submission]
+if missing:
+    raise SystemExit(f"submission recipe is missing portable pins: {missing}")
+if "/root/.cache/huggingface/" in submission:
+    raise SystemExit("submission recipe contains a machine-specific cache path")
+if "HF_HUB_OFFLINE" in submission or "TRANSFORMERS_OFFLINE" in submission:
+    raise SystemExit("submission recipe unexpectedly forces offline mode")
+PY
 
 results_sha="0dc298fc7c57ca5de91ee066fa1155b14746b53f33cca4c39c139eabc7c511ed"
 echo "${results_sha}  ${ROOT}/results.csv" | sha256sum --check
