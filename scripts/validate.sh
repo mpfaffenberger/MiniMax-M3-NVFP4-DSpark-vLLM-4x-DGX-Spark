@@ -16,7 +16,6 @@ import sys
 from pathlib import Path
 text = Path(sys.argv[1]).read_text()
 required = (
-    '--distributed-executor-backend ray',
     '"method":"dspark"',
     '--reasoning-parser minimax_m3',
     '--tool-call-parser minimax_m3',

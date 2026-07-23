@@ -62,7 +62,6 @@ command: |
       --host {host} \
       --port {port} \
       -tp {tensor_parallel} \
-      --distributed-executor-backend ray \
       --gpu-memory-utilization {gpu_memory_utilization} \
       --max-model-len {max_model_len} \
       --max-num-batched-tokens {max_num_batched_tokens} \

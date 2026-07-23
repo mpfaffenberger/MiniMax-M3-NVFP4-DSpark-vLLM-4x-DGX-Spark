@@ -10,7 +10,7 @@ and mods.
 
 That split keeps responsibilities boring and clear:
 
-- **spark-vllm-docker:** image construction, SSH, Docker, Ray, and rank launch.
+- **spark-vllm-docker:** image construction, SSH, Docker, and native rank launch.
 - **this repository:** MiniMax model profile, exact patches, validation, and docs.
 - **vLLM:** OpenAI API, scheduling, TP execution, reasoning, tools, and DSpark.
 
@@ -18,7 +18,7 @@ That split keeps responsibilities boring and clear:
 
 1. The head node accepts an OpenAI-compatible request on port 8000.
 2. vLLM renders MiniMax-M3's chat template and initializes reasoning/tool parsers.
-3. Ray dispatches tensor-parallel work across four ranks.
+3. Native vLLM multiprocessing dispatches work across four TP ranks.
 4. MiniMax-M3-DSpark proposes up to eight tokens.
 5. MiniMax-M3-NVFP4 verifies the proposed chain in a target forward pass.
 6. Accepted tokens enter the response; rejection resumes target decoding.
@@ -28,8 +28,8 @@ That split keeps responsibilities boring and clear:
 
 The native NVFP4 checkpoint plus runtime state is distributed across four GB10
 nodes. Each node loaded about 59.77 GiB of model state in the validated run.
-Ray supplies process placement and control; NCCL carries tensor-parallel
-collectives over the RoCE fabric.
+vLLM launches one native process per node; PyTorch distributed and NCCL carry
+tensor-parallel collectives over the RoCE fabric without a Ray control plane.
 
 ## Memory profile
 

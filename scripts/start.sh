@@ -17,10 +17,19 @@ args=(
     "${RUNTIME_DIR}/recipes/minimax-m3-nvidia-nvfp4-dspark.yaml"
     -n "${CLUSTER_NODES}"
     --name "${CONTAINER_NAME}"
+    --no-ray
     --daemon
 )
 [[ ${setup} -eq 1 ]] && args+=(--setup)
 
 cd "${RUNTIME_DIR}"
-./run-recipe.sh "${args[@]}"
+if [[ -n "${RECIPE_PYTHON:-}" ]]; then
+    "${RECIPE_PYTHON}" ./run-recipe.py "${args[@]}"
+elif python3 -c 'import yaml' 2>/dev/null; then
+    python3 ./run-recipe.py "${args[@]}"
+elif command -v uv >/dev/null 2>&1; then
+    uv run --with pyyaml python ./run-recipe.py "${args[@]}"
+else
+    ./run-recipe.sh "${args[@]}"
+fi
 echo "Launch dispatched. Follow startup with: ./scripts/logs.sh -f"

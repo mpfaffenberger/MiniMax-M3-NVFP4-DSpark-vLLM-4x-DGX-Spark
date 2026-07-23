@@ -7,7 +7,7 @@
 ./scripts/status.sh
 ```
 
-Look for the first traceback, not the final chorus of Ray workers reporting the
+Look for the first traceback, not the final chorus of TP ranks reporting the
 same failure. Model loading took roughly three minutes during validation.
 
 ## Multi-node launch hangs
@@ -25,8 +25,8 @@ Then verify:
 - both RoCE interfaces are up on every node;
 - `ETH_IF` and `IB_IF` name real interfaces;
 - head-to-worker SSH is noninteractive;
-- firewall rules allow Ray, NCCL, and `MASTER_PORT` traffic;
-- no stale containers or Ray processes remain from another deployment.
+- firewall rules allow NCCL and `MASTER_PORT` traffic;
+- no stale containers or vLLM rank processes remain from another deployment.
 
 ## OOM or host becomes unresponsive
 

@@ -1,4 +1,4 @@
-# MiniMax M3 NVFP4 + DSpark on vLLM Ray
+# MiniMax M3 NVFP4 + DSpark on Native Multi-Node vLLM
 
 > A validated four-node NVIDIA DGX Spark deployment for
 > [`nvidia/MiniMax-M3-NVFP4`](https://huggingface.co/nvidia/MiniMax-M3-NVFP4),
@@ -11,7 +11,7 @@
 
 ## What you get
 
-- **4× GB10 / DGX Spark**, one GPU per node, Ray + tensor parallelism 4.
+- **4× GB10 / DGX Spark**, one GPU per node, native vLLM tensor parallelism 4.
 - Native NVIDIA **ModelOpt NVFP4** target weights.
 - NVIDIA **DSpark**, drafting 8 speculative tokens per target step.
 - **FP8 KV cache** and a validated **262,144-token** serving ceiling.
@@ -63,12 +63,12 @@ Spark by changing a flag is not optimization; it is fiction with YAML syntax.
 
 ```bash
 git clone <this-repository-url>
-cd MiniMax-M3-NVFP4-DSpark-vLLM-Ray
+cd MiniMax-M3-NVFP4-DSpark-vLLM-Ray-4x-DGX-Spark
 cp .env.example .env
 $EDITOR .env
 ```
 
-The first address in `CLUSTER_NODES` is always the Ray head and API host.
+The first address in `CLUSTER_NODES` is the native TP rank 0 and API host.
 Update the fabric interface names for your machines.
 
 ### 2. Bootstrap the pinned orchestrator
@@ -188,7 +188,7 @@ validates typed JSON arguments with a weather-tool fixture.
 | Target | `nvidia/MiniMax-M3-NVFP4` |
 | Drafter | `nvidia/MiniMax-M3-DSpark` |
 | Tensor parallelism | 4 |
-| Distributed backend | Ray |
+| Distributed backend | native multiprocessing / PyTorch distributed |
 | Speculation | DSpark, `k=8` |
 | KV cache | FP8 |
 | Context | 262,144 tokens |
@@ -221,7 +221,7 @@ Every runtime modification is documented in [`docs/PATCHES.md`](docs/PATCHES.md)
 and fails closed if its expected source or checksum does not match. Highlights:
 
 - vLLM MiniMax-M3 NVFP4 correctness fixes from PR #48929.
-- NCCL 2.30.4 deployment on every Ray rank.
+- NCCL 2.30.4 deployment on every tensor-parallel rank.
 - checksum-verified arm64 ABI3 Rust tool parser.
 - adaptive streaming reasoning state fix.
 - `reasoning` → `reasoning_content` wire compatibility.
