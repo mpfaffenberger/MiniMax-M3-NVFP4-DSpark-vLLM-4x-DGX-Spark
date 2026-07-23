@@ -21,6 +21,7 @@ build_args:
 mods:
   - mods/fix-nccl-2.30.4
   - mods/fix-minimax-m3-nvfp4-correctness-48929
+  - mods/skip-empty-dspark-cudagraph-capture
   - mods/install-vllm-rust-tool-parser
   - mods/fix-minimax-m3-streaming-reasoning
   - mods/rename-reasoning-to-reasoning-content

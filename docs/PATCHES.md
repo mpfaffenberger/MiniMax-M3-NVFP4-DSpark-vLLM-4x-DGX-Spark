@@ -50,6 +50,15 @@ Maps internal `ChatMessage.reasoning` and `DeltaMessage.reasoning` to the
 OpenAI-compatible `reasoning_content` wire key at Pydantic serialization time.
 The old key is absent in regular JSON and SSE deltas.
 
+## `skip-empty-dspark-cudagraph-capture`
+
+MiniMax target execution supports vLLM's breakable `PIECEWISE` CUDA graphs,
+while the DSpark speculator only supports `FULL` graphs. With an explicit
+piecewise target profile, the DSpark graph manager has no capture candidates.
+The pinned vLLM build still entered its distributed capture context and wedged
+four-node startup. This guard returns early when `needs_capture()` is false;
+target graphs remain enabled and the draft step remains eager.
+
 ## `guard-minimax-m3-modelopt-fp4`
 
 Refuses to instantiate MiniMax MoE experts unless quantization resolves to
