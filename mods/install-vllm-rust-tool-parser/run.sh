@@ -2,7 +2,7 @@
 # Install vLLM's MiniMax-M3 PyO3 tool-parser extension built from b44311b6.
 set -euo pipefail
 
-readonly EXPECTED_SHA256="cfda01f2ba3ebdb4b7970c0b140be8874eba5f43087682424e50e141fd51df78"
+readonly EXPECTED_SHA256="4c00bb276904de5a12d27b70eff97250eca54716559e06b042f17b6cc827e944"
 readonly MOD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SOURCE="${MOD_DIR}/_rust_tool_parser.abi3.so"
 readonly SITE_PACKAGES="$(python3 -c 'import site; print(site.getsitepackages()[0])')"
@@ -54,6 +54,26 @@ fixture = (
     "]<]minimax[>[</invoke>\n"
     "]<]minimax[>[</tool_call>"
 )
+stream_parser = rust_parser.ToolParser("MinimaxM3ToolParser", [tool])
+streamed = []
+for chunk in (
+    "]<]minimax[>[<tool_call>\n"
+    "]<]minimax[>[<invoke name=\"get_weather\">\n",
+    "]<]minimax[>[<city>New York]<]minimax[>[</city>\n",
+    "]<]minimax[>[<units>metric]<]minimax[>[</units>\n",
+    "]<]minimax[>[</invoke>\n]<]minimax[>[</tool_call>",
+):
+    chunk_output = rust_parser.ToolParserOutput()
+    stream_parser.parse_into(chunk, chunk_output)
+    streamed.extend((call.name, call.arguments) for call in chunk_output.calls)
+stream_parser.finish()
+assert streamed == [
+    ("get_weather", ""),
+    (None, '{"city":"New York"'),
+    (None, ',"units":"metric"'),
+    (None, "}"),
+], streamed
+
 parser.parse_into(fixture, output)
 output.append(parser.finish())
 parsed = output.coalesce()
@@ -65,6 +85,6 @@ assert json.loads(parsed.calls[0].arguments) == {
     "units": "metric",
 }
 print(
-    "[install-vllm-rust-tool-parser] import, construction, and MiniMax parse checks passed"
+    "[install-vllm-rust-tool-parser] import, incremental streaming, and MiniMax parse checks passed"
 )
 PY

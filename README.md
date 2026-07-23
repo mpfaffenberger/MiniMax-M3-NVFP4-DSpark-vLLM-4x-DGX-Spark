@@ -17,7 +17,7 @@
 - **FP8 KV cache** and a validated **262,144-token** serving ceiling.
 - OpenAI-compatible chat completions at `http://HEAD:8000/v1`.
 - MiniMax reasoning with `reasoning_content` in regular and SSE responses.
-- Automatic MiniMax tool calls through the checksum-pinned Rust parser.
+- Automatic MiniMax tool calls with incrementally streamed typed arguments through the checksum-pinned Rust parser.
 - Reproducible runtime pinning, idempotent mods, smoke tests, and live metrics.
 
 ## Validated tuned checkpoint
@@ -223,6 +223,7 @@ make status   # containers and API health
 make logs     # follow head/API logs
 make metrics  # DSpark acceptance and decode throughput
 make smoke    # reasoning + disabled mode + tool calling
+make restart  # stop, reclaim GB10 page cache, and relaunch all nodes
 make stop     # stop all four containers
 ```
 

@@ -1,4 +1,4 @@
-.PHONY: bootstrap validate prepare start setup stop status logs smoke metrics test container-build container-audit container-publish container-install
+.PHONY: bootstrap validate prepare start restart setup stop status logs smoke metrics test container-build container-audit container-publish container-install
 
 bootstrap:
 	./scripts/bootstrap.sh
@@ -8,6 +8,8 @@ prepare:
 	./scripts/prepare-models.sh
 start:
 	./scripts/start.sh
+restart:
+	./scripts/restart.sh
 setup:
 	./scripts/start.sh --setup
 stop:

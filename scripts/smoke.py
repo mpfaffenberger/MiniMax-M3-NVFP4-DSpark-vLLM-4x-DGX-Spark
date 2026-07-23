@@ -53,6 +53,36 @@ def stream_message(url: str, payload: dict[str, Any]) -> tuple[str, str]:
     return "".join(reasoning), "".join(content)
 
 
+def stream_tool_call(
+    url: str, payload: dict[str, Any]
+) -> tuple[str, str, list[str], str | None]:
+    """Collect one streamed tool name and its ordered argument fragments."""
+    payload["stream"] = True
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    name = ""
+    call_id = ""
+    fragments: list[str] = []
+    finish_reason = None
+    with urllib.request.urlopen(req, timeout=300) as response:
+        for raw in response:
+            line = raw.decode().strip()
+            if not line.startswith("data: ") or line == "data: [DONE]":
+                continue
+            choice = json.loads(line[6:])["choices"][0]
+            finish_reason = choice.get("finish_reason") or finish_reason
+            for call in choice["delta"].get("tool_calls") or []:
+                call_id = call.get("id") or call_id
+                function = call.get("function") or {}
+                name = function.get("name") or name
+                if function.get("arguments") is not None:
+                    fragments.append(function["arguments"])
+    return call_id, name, fragments, finish_reason
+
+
 def message(url: str, **overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "model": MODEL,
@@ -125,6 +155,30 @@ def main() -> None:
     arguments = json.loads(calls[0]["function"]["arguments"])
     assert arguments["city"] == "Paris, France" and arguments["units"] == "metric", arguments
     print("PASS typed MiniMax tool call")
+
+    call_id, name, fragments, finish_reason = stream_tool_call(
+        url,
+        {
+            "model": MODEL,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Use get_weather for Paris, France in metric units.",
+                }
+            ],
+            "tools": [tool],
+            "tool_choice": "auto",
+            "temperature": 0,
+            "max_tokens": 256,
+        },
+    )
+    assert call_id and name == "get_weather", (call_id, name, fragments)
+    assert len(fragments) >= 3, fragments
+    streamed_arguments = json.loads("".join(fragments))
+    assert streamed_arguments["city"] == "Paris, France", streamed_arguments
+    assert streamed_arguments["units"] == "metric", streamed_arguments
+    assert finish_reason == "tool_calls", finish_reason
+    print(f"PASS incremental MiniMax tool stream ({len(fragments)} argument deltas)")
 
 
 if __name__ == "__main__":
