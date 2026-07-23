@@ -20,23 +20,24 @@
 - Automatic MiniMax tool calls through the checksum-pinned Rust parser.
 - Reproducible runtime pinning, idempotent mods, smoke tests, and live metrics.
 
-## Validated checkpoint
+## Validated tuned checkpoint
 
-Measured on a four-node GB10 cluster on 2026-07-23:
+Measured with llama-benchy 0.4.0 on a four-node GB10 cluster on 2026-07-23:
 
 | Metric | Result |
 |---|---:|
-| Aggregate decode throughput | **29.2 tok/s** |
-| Peak 10-second decode window | **37.5 tok/s** |
-| DSpark token acceptance | **21.3%** |
-| Accepted tokens per draft | **1.71** |
-| Successful requests | **11/11** |
-| Prefix-cache hit rate during run | up to **77.8%** |
+| Decode, depth 0 / C1 | **36.70 tok/s** |
+| Aggregate decode, depth 0 / C5 | **50.91 tok/s** |
+| Aggregate decode, depth 4096 / C5 | **47.54 tok/s** |
+| Peak decode, depth 4096 / C5 | **97.33 tok/s** |
+| Context prefill, depth 4096 / C1 | **2,255.7 tok/s** |
+| Successful quick-benchmark requests | **54/54** |
 | Server/OOM/NVRM errors | **0** |
 
 These are observed results, not an enchanted marketing benchmark. Prompt shape,
-output length, concurrency, cache warmth, and fabric quality all matter. Full
-notes live in [`benchmarks/2026-07-23-validated-checkpoint.md`](benchmarks/2026-07-23-validated-checkpoint.md).
+output length, concurrency, cache warmth, and fabric quality all matter. See the
+[`native eager checkpoint`](benchmarks/2026-07-23-native-eager-quick.md) and the
+original [`Ray baseline`](benchmarks/2026-07-23-validated-checkpoint.md).
 
 ## Architecture
 
