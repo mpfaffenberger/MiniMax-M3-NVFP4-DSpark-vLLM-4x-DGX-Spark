@@ -22,4 +22,5 @@ jobs:
         run: python3 -m py_compile scripts/*.py
       - name: Verify Rust parser artifact
         run: |
-          echo 'cfda01f2ba3ebdb4b7970c0b140be8874eba5f43087682424e50e141fd51df78  mods/install-vllm-rust-tool-parser/_rust_tool_parser.abi3.so' | sha256sum --check
+          echo '4c00bb276904de5a12d27b70eff97250eca54716559e06b042f17b6cc827e944  mods/install-vllm-rust-tool-parser/_rust_tool_parser.abi3.so' | sha256sum --check
+          echo '116d7e69befe8204a7c54ef81fad823f1a32e70582d1d045bff786f2d92cd8a4  mods/install-vllm-rust-tool-parser/minimax-m3-incremental-streaming.patch' | sha256sum --check
