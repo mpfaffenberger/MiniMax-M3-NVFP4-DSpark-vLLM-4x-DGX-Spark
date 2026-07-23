@@ -91,6 +91,11 @@ This clones `eugr/spark-vllm-docker` under `.runtime/` at the exact tested
 commit, applies the small required base patch, and overlays this repository's
 recipe and mods. It refuses to mutate an unexpected checkout.
 
+The exact patched container build context is also vendored under [`container/`](container/README.md).
+Use `make container-build` for a pinned source rebuild and `make container-audit`
+to verify the validated local image. The immutable registry digest, once
+published, is the canonical binary reproduction path.
+
 ### 3. Prepare weights and NCCL
 
 Obtain the arm64 CUDA 13.2 NCCL 2.30.4 shared library through an authorized

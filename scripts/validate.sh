@@ -52,6 +52,13 @@ if "HF_HUB_OFFLINE" in submission or "TRANSFORMERS_OFFLINE" in submission:
     raise SystemExit("submission recipe unexpectedly forces offline mode")
 PY
 
+dockerfile_sha="2cb5a1fd72e515d1fdf5bcee31abe3b02816c45829c421b6d015a88a9b106c48"
+flashinfer_patch_sha="142c2e8713ede936c70cd0bcaa1b074e616d06078926faebc2cdd2eb981c94be"
+build_metadata_sha="97c82981f54815d77a3cba6edf659f4bade5f21218e1e46f5f15f3608d9dfa6b"
+echo "${dockerfile_sha}  ${ROOT}/container/Dockerfile" | sha256sum --check
+echo "${flashinfer_patch_sha}  ${ROOT}/container/flashinfer_cache.patch" | sha256sum --check
+echo "${build_metadata_sha}  ${ROOT}/container/build-metadata.yaml" | sha256sum --check
+
 results_sha="0dc298fc7c57ca5de91ee066fa1155b14746b53f33cca4c39c139eabc7c511ed"
 echo "${results_sha}  ${ROOT}/results.csv" | sha256sum --check
 

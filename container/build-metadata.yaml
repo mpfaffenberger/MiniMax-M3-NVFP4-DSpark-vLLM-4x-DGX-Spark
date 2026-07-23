@@ -1,0 +1,14 @@
+build_date: reproducible-source-build
+build_script_commit: 08c34dd8262e5b429a8cbf36bcf15507628c2999
+vllm_version: 0.23.1rc1.dev1388+gb44311b6e.d20260722.cu132
+vllm_commit: b44311b6ef9232d1f345f4b55adef7abc223f0e7
+flashinfer_commit: 771b7d47
+gpu_arch: 12.1a
+base_image: nvidia/cuda:13.2.0-devel-ubuntu24.04
+build_args:
+  vllm_ref: b44311b6ef9232d1f345f4b55adef7abc223f0e7
+  flashinfer_ref: 771b7d47
+  transformers_5: true
+  exp_mxfp4: false
+  vllm_prs: ""
+  build_jobs: 1
