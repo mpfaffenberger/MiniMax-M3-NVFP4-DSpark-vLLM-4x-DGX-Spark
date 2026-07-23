@@ -27,6 +27,16 @@ if missing:
     raise SystemExit(f"recipe is missing: {missing}")
 PY
 
+cmp -s \
+    "${ROOT}/recipes/minimax-m3-nvidia-nvfp4-dspark.yaml" \
+    "${ROOT}/submission/recipe.yaml" || {
+    echo "submission/recipe.yaml drifted from the production recipe" >&2
+    exit 1
+}
+
+results_sha="0dc298fc7c57ca5de91ee066fa1155b14746b53f33cca4c39c139eabc7c511ed"
+echo "${results_sha}  ${ROOT}/results.csv" | sha256sum --check
+
 expected="cfda01f2ba3ebdb4b7970c0b140be8874eba5f43087682424e50e141fd51df78"
 echo "${expected}  ${ROOT}/mods/install-vllm-rust-tool-parser/_rust_tool_parser.abi3.so" | sha256sum --check
 [[ ${fail} -eq 0 ]] || exit 1

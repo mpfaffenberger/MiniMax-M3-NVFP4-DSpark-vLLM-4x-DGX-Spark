@@ -41,6 +41,12 @@ output length, concurrency, cache warmth, and fabric quality all matter. See the
 [`CUDA-graph comparison`](benchmarks/2026-07-23-native-piecewise-cudagraph-quick.md),
 and the original [`Ray baseline`](benchmarks/2026-07-23-validated-checkpoint.md).
 
+### SparkRun submission
+
+The upload-ready pair is [`submission/recipe.yaml`](submission/recipe.yaml) and
+[`results.csv`](results.csv). Reproduction and checksum notes are in the
+[`submission bundle README`](submission/README.md).
+
 ## Architecture
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the deployment architecture,
