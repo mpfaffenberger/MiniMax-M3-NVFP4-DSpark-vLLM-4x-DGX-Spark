@@ -93,8 +93,9 @@ recipe and mods. It refuses to mutate an unexpected checkout.
 
 The exact patched container build context is also vendored under [`container/`](container/README.md).
 Use `make container-build` for a pinned source rebuild and `make container-audit`
-to verify the validated local image. The immutable registry digest, once
-published, is the canonical binary reproduction path.
+to verify the validated local image. The submission recipe pins the published
+arm64 image manifest `sha256:de616b32...9648b`, which is the canonical binary
+reproduction path.
 
 ### 3. Prepare weights and NCCL
 

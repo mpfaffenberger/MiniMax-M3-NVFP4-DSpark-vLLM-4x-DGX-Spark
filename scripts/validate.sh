@@ -13,12 +13,19 @@ done
 python3 -m py_compile "${ROOT}/scripts/metrics.py" "${ROOT}/scripts/smoke.py"
 python3 - <<'PY' \
     "${ROOT}/recipes/minimax-m3-nvidia-nvfp4-dspark.yaml" \
-    "${ROOT}/submission/recipe.yaml"
+    "${ROOT}/submission/recipe.yaml" \
+    "${ROOT}/container/image.env"
 import sys
 from pathlib import Path
 
 production = Path(sys.argv[1]).read_text()
 submission = Path(sys.argv[2]).read_text()
+image_env = Path(sys.argv[3]).read_text()
+image_ref = next(
+    line.removeprefix("IMAGE_REF=")
+    for line in image_env.splitlines()
+    if line.startswith("IMAGE_REF=")
+)
 common = (
     '"method":"dspark"',
     '--reasoning-parser minimax_m3',
@@ -36,6 +43,7 @@ for name, text in (("production", production), ("submission", submission)):
 if "/root/.cache/huggingface/" not in production:
     raise SystemExit("production recipe must retain direct local cache paths")
 submission_required = (
+    f"container: {image_ref}",
     "target_model: nvidia/MiniMax-M3-NVFP4",
     "target_revision: 901464083161bf8612a29ff7ad29914cd4ab4a85",
     "draft_model: nvidia/MiniMax-M3-DSpark",

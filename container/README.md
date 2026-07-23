@@ -8,10 +8,12 @@ half.
 ## Validated image
 
 ```text
-Local tag: vllm-node-tf5-minimax-m3-dspark-20260722
-Image ID:  sha256:885c0d34fbecd82f0467533f4196e5437326fef6c42f92949a937e76d56cc0c1
-Platform:  linux/arm64
-Size:      18.93 GiB uncompressed; approximately 8.35 GiB compressed
+Local tag:      vllm-node-tf5-minimax-m3-dspark-20260722
+Local image ID: sha256:885c0d34fbecd82f0467533f4196e5437326fef6c42f92949a937e76d56cc0c1
+Registry tag:   ghcr.io/mpfaffenberger/minimax-m3-nvfp4-dspark-vllm:b44311b6-20260722-arm64
+Manifest:       sha256:de616b32bf1ef9cdf809830a1faf1e57f74c136b8e415e854607ebc4efd9648b
+Platform:       linux/arm64
+Size:           18.93 GiB uncompressed; approximately 8.35 GiB compressed
 ```
 
 The image contains no model weights, Hugging Face cache, or files larger than
@@ -59,13 +61,9 @@ export GHCR_TOKEN
 unset GHCR_TOKEN
 ```
 
-After publishing:
-
-1. make the GHCR package public;
-2. commit the generated `container/image.env`;
-3. replace the submission recipe's `container` value with `IMAGE_REF` from that
-   file;
-4. validate and republish the recipe.
+Publishing generates `container/image.env`. Commit that file and pin the
+submission recipe's `container` value to its immutable `IMAGE_REF`; never pin a
+reproducibility recipe to only the mutable tag.
 
 Never publish model weights in the image.
 

@@ -26,19 +26,17 @@ cp .env.example .env
 $EDITOR .env
 make bootstrap
 NCCL_LIBRARY=/path/to/libnccl.so.2 make prepare
-make setup
-```
-
-Equivalent direct invocation inside the bootstrapped runtime:
-
-```bash
-./run-recipe.sh minimax-m3-nvidia-nvfp4-dspark \
+./scripts/install-container.sh HEAD,WORKER1,WORKER2,WORKER3
+cp submission/recipe.yaml \
+  .runtime/spark-vllm-docker/recipes/minimax-m3-nvidia-nvfp4-dspark.yaml
+.runtime/spark-vllm-docker/run-recipe.sh minimax-m3-nvidia-nvfp4-dspark \
   --nodes HEAD,WORKER1,WORKER2,WORKER3 \
   --no-ray \
   --daemon
 ```
 
-`--no-ray` is explicit above for readability and compatibility; it is the
+The installer pulls the exact arm64 container by immutable registry digest on
+every node. `--no-ray` is explicit for readability and compatibility; it is the
 current upstream default.
 
 Benchmark command:
@@ -60,6 +58,9 @@ llama-benchy \
 ```text
 results.csv SHA-256:
 0dc298fc7c57ca5de91ee066fa1155b14746b53f33cca4c39c139eabc7c511ed
+
+container manifest:
+sha256:de616b32bf1ef9cdf809830a1faf1e57f74c136b8e415e854607ebc4efd9648b
 ```
 
 The submission recipe uses portable Hugging Face IDs pinned to the exact target

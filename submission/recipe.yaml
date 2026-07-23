@@ -9,14 +9,9 @@ name: NVIDIA-MiniMax-M3-NVFP4-DSpark-k8-fp8kv
 description: NVIDIA MiniMax M3 NVFP4 with NVIDIA DSpark k=8, TP=4 GB10 cluster
 
 model: nvidia/MiniMax-M3-NVFP4
-container: vllm-node-tf5-minimax-m3-dspark-20260722
+container: ghcr.io/mpfaffenberger/minimax-m3-nvfp4-dspark-vllm@sha256:de616b32bf1ef9cdf809830a1faf1e57f74c136b8e415e854607ebc4efd9648b
 cluster_only: true
 solo_only: false
-
-build_args:
-  - --tf5
-  - --vllm-ref
-  - "b44311b6ef9232d1f345f4b55adef7abc223f0e7"
 
 mods:
   - mods/fix-nccl-2.30.4
