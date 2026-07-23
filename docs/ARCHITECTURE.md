@@ -40,7 +40,11 @@ The recipe uses:
 - 262,144 maximum model length
 - 8,192 maximum batched tokens
 - 4 maximum sequences
-- eager execution
+- vLLM automatic compilation and CUDA-graph selection
+
+The first validated benchmark checkpoint used eager execution. The current
+recipe removes `--enforce-eager` so compilation and CUDA graphs can be measured
+as a controlled tuning candidate against that baseline.
 
 Validated host memory after startup was approximately 89–93 GiB used per node,
 leaving 28–31 GiB available. Unified-memory systems have very little patience
