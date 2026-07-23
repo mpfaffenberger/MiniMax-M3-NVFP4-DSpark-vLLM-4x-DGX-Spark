@@ -1,0 +1,391 @@
+diff --git a/vllm/model_executor/layers/fused_moe/experts/flashinfer_cutlass_moe.py b/vllm/model_executor/layers/fused_moe/experts/flashinfer_cutlass_moe.py
+index 2b8657723bd5..cbceaed78a5e 100644
+--- a/vllm/model_executor/layers/fused_moe/experts/flashinfer_cutlass_moe.py
++++ b/vllm/model_executor/layers/fused_moe/experts/flashinfer_cutlass_moe.py
+@@ -13,6 +13,9 @@
+ from vllm.model_executor.layers.fused_moe.topk_weight_and_reduce import (
+     TopKWeightAndReduceNoOP,
+ )
++from vllm.model_executor.layers.quantization.utils.flashinfer_utils import (
++    activation_to_flashinfer_type,
++)
+ from vllm.model_executor.layers.quantization.utils.quant_utils import (
+     QuantKey,
+     kFp8Dynamic128Sym,
+@@ -93,29 +96,40 @@ def __init__(
+         # - pass per-block weight scales to the kernel
+         # - skip input activation quantization (kernel applies scaling)
+         self.use_deepseek_fp8_block_scale = quant_config.is_block_quantized
+-        self.gemm1_clamp_limit: torch.Tensor | None = None
+-        if quant_config.gemm1_clamp_limit is not None:
+-            self.gemm1_clamp_limit = torch.tensor(
+-                [quant_config.gemm1_clamp_limit] * self.num_experts,
++
++        def _per_expert(value: float | None) -> torch.Tensor | None:
++            if value is None:
++                return None
++            return torch.full(
++                (self.num_experts,),
++                float(value),
+                 dtype=torch.float32,
+                 device=self.device,
+             )
+ 
++        clamp = quant_config.gemm1_clamp_limit
++        if clamp is None:
++            clamp = moe_config.swiglu_limit
++        alpha = quant_config.gemm1_alpha
++        if alpha is None:
++            alpha = moe_config.swiglu_alpha
++        beta = quant_config.gemm1_beta
++        if beta is None:
++            beta = moe_config.swiglu_beta
++
++        self.gemm1_clamp_limit = _per_expert(clamp)
++        self.gemm1_alpha = _per_expert(alpha)
++        self.gemm1_beta = _per_expert(beta)
++
+         if quant_config.weight_quant_dtype == "mxfp4":
+             # This value is used specifically for gpt-oss,
+             # Need to revisit this for other models
+-            self.gemm1_alpha = torch.tensor(
+-                [1.702] * self.num_experts, dtype=torch.float32, device=self.device
+-            )
+-            self.gemm1_beta = torch.tensor(
+-                [1.0] * self.num_experts, dtype=torch.float32, device=self.device
+-            )
++            if self.gemm1_alpha is None:
++                self.gemm1_alpha = _per_expert(1.702)
++            if self.gemm1_beta is None:
++                self.gemm1_beta = _per_expert(1.0)
+             if self.gemm1_clamp_limit is None:
+-                self.gemm1_clamp_limit = torch.tensor(
+-                    [7.0] * self.num_experts,
+-                    dtype=torch.float32,
+-                    device=self.device,
+-                )
++                self.gemm1_clamp_limit = _per_expert(7.0)
+             if quant_config.quant_dtype == "mxfp8":
+                 self.fake_input_scale = torch.ones(
+                     self.num_experts,
+@@ -190,6 +204,7 @@ def _supports_activation(activation: MoEActivation) -> bool:
+             MoEActivation.GELU_TANH,
+             MoEActivation.RELU2_NO_MUL,
+             MoEActivation.SWIGLUOAI,
++            MoEActivation.SWIGLUOAI_UNINTERLEAVE,
+         ]
+ 
+     @staticmethod
+@@ -263,18 +278,6 @@ def apply(
+         expert_tokens_meta: mk.ExpertTokensMetadata | None,
+         apply_router_weight_on_input: bool | None,
+     ):
+-        from flashinfer.fused_moe.core import ActivationType
+-
+-        activation_str_to_value_map = {
+-            MoEActivation.SILU: ActivationType.Swiglu,  # This is the default
+-            MoEActivation.GELU_TANH: ActivationType.Geglu,
+-            MoEActivation.SWIGLUOAI: ActivationType.Swiglu,  # gpt-oss alias
+-            MoEActivation.RELU2_NO_MUL: ActivationType.Relu2,
+-        }
+-        assert activation in activation_str_to_value_map, (
+-            f"{activation=} missing from {activation_str_to_value_map.keys()=}"
+-        )
+-
+         quant_scales = None
+         fc1_expert_weights = None
+         fc2_expert_weights = None
+@@ -282,9 +285,16 @@ def apply(
+         fc2_expert_biases = None
+         swiglu_alpha = None
+         swiglu_beta = None
+-        swiglu_limit = (
+-            self.gemm1_clamp_limit if activation == MoEActivation.SILU else None
+-        )
++        swiglu_limit = None
++        if activation == MoEActivation.SILU:
++            swiglu_limit = self.gemm1_clamp_limit
++        elif activation in (
++            MoEActivation.SWIGLUOAI,
++            MoEActivation.SWIGLUOAI_UNINTERLEAVE,
++        ):
++            swiglu_alpha = self.gemm1_alpha
++            swiglu_beta = self.gemm1_beta
++            swiglu_limit = self.gemm1_clamp_limit
+         use_mxfp8_act_scaling = False
+         use_w4_group_scaling = False
+         # Select quantization metadata based on FP8 format/path
+@@ -392,7 +402,7 @@ def apply(
+             tp_rank=self.tp_rank,
+             ep_size=self.ep_size,
+             ep_rank=self.ep_rank,
+-            activation_type=activation_str_to_value_map[activation],
++            activation_type=activation_to_flashinfer_type(activation),
+             # Informs FlashInfer to use the block-scale decoding path when True
+             use_deepseek_fp8_block_scale=self.use_deepseek_fp8_block_scale,
+             use_mxfp8_act_scaling=use_mxfp8_act_scaling,
+diff --git a/vllm/model_executor/layers/fused_moe/experts/marlin_moe.py b/vllm/model_executor/layers/fused_moe/experts/marlin_moe.py
+index 20576de5a608..efaaa7eda2ad 100644
+--- a/vllm/model_executor/layers/fused_moe/experts/marlin_moe.py
++++ b/vllm/model_executor/layers/fused_moe/experts/marlin_moe.py
+@@ -589,15 +589,18 @@ def __init__(
+         self.is_k_full = is_k_full
+         self.input_dtype = get_marlin_input_dtype()
+         self.gemm1_clamp_limit = quant_config.gemm1_clamp_limit
+-        # Gated-activation params (used by SWIGLUOAI_UNINTERLEAVE on packed w13).
+-        # silu == swigluoai with alpha=1, beta=0; configs that don't set these
+-        # (plain silu) fall back to the silu identity.
+-        self.gemm1_alpha = (
+-            quant_config.gemm1_alpha if quant_config.gemm1_alpha is not None else 1.0
+-        )
+-        self.gemm1_beta = (
+-            quant_config.gemm1_beta if quant_config.gemm1_beta is not None else 0.0
+-        )
++        if self.gemm1_clamp_limit is None:
++            self.gemm1_clamp_limit = moe_config.swiglu_limit
++
++        gemm1_alpha = quant_config.gemm1_alpha
++        if gemm1_alpha is None:
++            gemm1_alpha = moe_config.swiglu_alpha
++        self.gemm1_alpha = 1.0 if gemm1_alpha is None else gemm1_alpha
++
++        gemm1_beta = quant_config.gemm1_beta
++        if gemm1_beta is None:
++            gemm1_beta = moe_config.swiglu_beta
++        self.gemm1_beta = 0.0 if gemm1_beta is None else gemm1_beta
+ 
+         super().__init__(
+             moe_config=moe_config,
+diff --git a/vllm/model_executor/layers/quantization/utils/flashinfer_utils.py b/vllm/model_executor/layers/quantization/utils/flashinfer_utils.py
+index 632cca1fda29..7e064dddba80 100644
+--- a/vllm/model_executor/layers/quantization/utils/flashinfer_utils.py
++++ b/vllm/model_executor/layers/quantization/utils/flashinfer_utils.py
+@@ -27,11 +27,11 @@ def activation_to_flashinfer_type(activation: MoEActivation) -> "ActivationType"
+         MoEActivation.GELU_NO_MUL: ActivationType.Gelu,
+         MoEActivation.SILU: ActivationType.Swiglu,
+         # SwiGLU-OAI uses Swiglu; the OAI alpha/beta/clamp come from gemm1_* args.
++        MoEActivation.SWIGLUOAI: ActivationType.Swiglu,
+         MoEActivation.SWIGLUOAI_UNINTERLEAVE: ActivationType.Swiglu,
+         MoEActivation.GELU: ActivationType.Geglu,
+         MoEActivation.GELU_TANH: ActivationType.Geglu,
+         MoEActivation.RELU2_NO_MUL: ActivationType.Relu2,
+-        MoEActivation.SWIGLUOAI_UNINTERLEAVE: ActivationType.Swiglu,
+     }
+     return ACTIVATION_TO_FI_ACTIVATION[activation]
+ 
+diff --git a/vllm/models/minimax_m3/common/indexer.py b/vllm/models/minimax_m3/common/indexer.py
+index c66e7ce5267e..f1963891485a 100644
+--- a/vllm/models/minimax_m3/common/indexer.py
++++ b/vllm/models/minimax_m3/common/indexer.py
+@@ -15,7 +15,7 @@
+ """
+ 
+ from dataclasses import dataclass
+-from typing import ClassVar
++from typing import ClassVar, Literal
+ 
+ import torch
+ from torch import nn
+@@ -59,6 +59,18 @@
+ 
+ logger = init_logger(__name__)
+ 
++TopKIndicesBufferLayout = Literal["head_major", "token_major"]
++
++
++def as_head_major_topk_indices(
++    buffer: torch.Tensor,
++    num_tokens: int,
++    layout: TopKIndicesBufferLayout,
++) -> torch.Tensor:
++    if layout == "token_major":
++        return buffer[:num_tokens].transpose(0, 1)
++    return buffer[:, :num_tokens]
++
+ 
+ class MiniMaxM3IndexerBackend(AttentionBackend):
+     """Indexer side-cache backend (key-only)."""
+@@ -352,6 +364,7 @@ class MiniMaxM3IndexerImpl(nn.Module):
+ 
+     # Set by each impl so the side cache reports the matching backend + builder.
+     indexer_backend_cls: ClassVar[type[AttentionBackend]] = MiniMaxM3IndexerBackend
++    topk_indices_buffer_layout: ClassVar[TopKIndicesBufferLayout] = "head_major"
+ 
+     def __init__(
+         self,
+@@ -420,10 +433,11 @@ def forward(
+         )
+         kv = self.index_cache.kv_cache
+ 
+-        # Both sides write into the single shared persistent topk_indices_buffer
+-        # (decode at [:, :nd], prefill at [:, nd:]) and return views into it; the
+-        # kernels' out= writes out[:, :total_q]. None -> allocate fresh.
+         buf = self.topk_indices_buffer
++        if buf is not None:
++            buf = as_head_major_topk_indices(
++                buf, num_tokens, self.topk_indices_buffer_layout
++            )
+         decode_topk: torch.Tensor | None = None
+         prefill_topk: torch.Tensor | None = None
+         if index_md.num_decodes > 0:
+@@ -576,6 +590,10 @@ def index_cache(self) -> MiniMaxM3IndexerCache:
+     def num_index_heads(self) -> int:
+         return self.impl.num_index_heads
+ 
++    @property
++    def topk_indices_buffer_layout(self) -> TopKIndicesBufferLayout:
++        return self.impl.topk_indices_buffer_layout
++
+     def forward(
+         self,
+         index_query: torch.Tensor,
+diff --git a/vllm/models/minimax_m3/common/sparse_attention.py b/vllm/models/minimax_m3/common/sparse_attention.py
+index f887f14b643b..2defd307d19b 100644
+--- a/vllm/models/minimax_m3/common/sparse_attention.py
++++ b/vllm/models/minimax_m3/common/sparse_attention.py
+@@ -25,6 +25,7 @@
+ from vllm.config.cache import CacheDType
+ from vllm.forward_context import get_forward_context
+ from vllm.logger import init_logger
++from vllm.models.minimax_m3.common.indexer import as_head_major_topk_indices
+ from vllm.models.minimax_m3.common.ops.sparse_attn import SPARSE_BLOCK_SIZE
+ from vllm.platforms import current_platform
+ 
+@@ -359,8 +360,7 @@ def forward(
+         """Attend the queries to the indexer-selected blocks. Per kernel.
+ 
+         The indexer has already written the top-k block ids into
+-        ``layer.topk_indices_buffer`` (decode at ``[:, :nd]``, prefill at
+-        ``[:, nd:num_tokens]``); the attend reads them from there.
++        ``layer.topk_indices_buffer``; the attend reads them from there.
+         """
+         raise NotImplementedError
+ 
+@@ -383,9 +383,10 @@ def forward(
+ 
+         nd = main_md.num_decode_tokens
+         num_tokens = main_md.num_actual_tokens
+-        # Indexer top-k from the shared buffer: decode [:, :nd], prefill [:, nd:].
+         topk = layer.topk_indices_buffer  # type: ignore[attr-defined]
+         assert topk is not None
++        layout = layer.indexer.topk_indices_buffer_layout  # type: ignore[attr-defined]
++        topk = as_head_major_topk_indices(topk, num_tokens, layout)
+         hd = self.head_size
+         q = query[:num_tokens].view(-1, self.num_heads, hd)
+         out = output[:num_tokens].view(-1, self.num_heads, hd)
+diff --git a/vllm/models/minimax_m3/nvidia/indexer_msa.py b/vllm/models/minimax_m3/nvidia/indexer_msa.py
+index 8a015d4e6eae..804aff17ede3 100644
+--- a/vllm/models/minimax_m3/nvidia/indexer_msa.py
++++ b/vllm/models/minimax_m3/nvidia/indexer_msa.py
+@@ -34,6 +34,7 @@
+     MiniMaxM3IndexerImpl,
+     MiniMaxM3IndexerMetadata,
+     MiniMaxM3IndexerMetadataBuilder,
++    TopKIndicesBufferLayout,
+ )
+ from vllm.models.minimax_m3.common.ops.index_topk import (
+     minimax_m3_index_decode_score,
+@@ -260,6 +261,7 @@ class MiniMaxM3IndexerMSAImpl(MiniMaxM3IndexerImpl):
+     """Decode: CuteDSL/Triton score. Prefill: fmha_sm100 OnlyScore + top-k."""
+ 
+     indexer_backend_cls: ClassVar[type[AttentionBackend]] = MiniMaxM3IndexerMSABackend
++    topk_indices_buffer_layout: ClassVar[TopKIndicesBufferLayout] = "token_major"
+ 
+     def forward(
+         self,
+diff --git a/vllm/models/minimax_m3/nvidia/model.py b/vllm/models/minimax_m3/nvidia/model.py
+index e29514ab9a32..f05df60d8a4a 100644
+--- a/vllm/models/minimax_m3/nvidia/model.py
++++ b/vllm/models/minimax_m3/nvidia/model.py
+@@ -70,7 +70,10 @@
+     maybe_prefix,
+ )
+ from vllm.model_executor.models.vision import run_dp_sharded_mrope_vision_model
+-from vllm.models.minimax_m3.common.indexer import MiniMaxM3Indexer
++from vllm.models.minimax_m3.common.indexer import (
++    MiniMaxM3Indexer,
++    select_indexer_impl_cls,
++)
+ from vllm.models.minimax_m3.common.mm_preprocess import (
+     MiniMaxM3VLDummyInputsBuilder,
+     MiniMaxM3VLMultiModalProcessor,
+@@ -787,24 +790,23 @@ def __init__(self, *, vllm_config: VllmConfig, prefix: str = ""):
+         else:
+             self.embed_tokens = PPMissingLayer()
+ 
+-        # Reserved top-k indices buffer shared by all sparse-attention indexer
+-        # layers (mirrors DeepseekV4); kept at a stable address so the indexer's
+-        # top-k output survives cudagraph capture/replay. Token-major
+-        # [total_q, num_index_heads, topk] so the indexer writes its native
+-        # [token, head, topk] top-k; the attend transposes to [H, tokens, topk].
++        # Reserved top-k indices buffer shared by all sparse-attention layers.
+         sparse_cfg = getattr(config, "sparse_attention_config", None)
+         if sparse_cfg is not None:
+             tp_size = get_tensor_model_parallel_world_size()
+             num_index_heads = max(1, sparse_cfg["sparse_num_index_heads"] // tp_size)
+-            # Pad tokens to a multiple of 4 so the buffer head stride stays
+-            # int4-aligned for build_k2q_csr's vectorised int4 loads.
+             max_num_batched_tokens = vllm_config.scheduler_config.max_num_batched_tokens
+             padded_num_tokens = (max_num_batched_tokens + 3) // 4 * 4
++            indexer_impl_cls = select_indexer_impl_cls(
++                topk_blocks=sparse_cfg["sparse_topk_blocks"],
++                indexer_kv_dtype=vllm_config.attention_config.indexer_kv_dtype,
++            )
++            if indexer_impl_cls.topk_indices_buffer_layout == "token_major":
++                buffer_shape = (padded_num_tokens, num_index_heads)
++            else:
++                buffer_shape = (num_index_heads, padded_num_tokens)
+             self.topk_indices_buffer = torch.empty(
+-                padded_num_tokens,
+-                num_index_heads,
+-                sparse_cfg["sparse_topk_blocks"],
+-                dtype=torch.int32,
++                *buffer_shape, sparse_cfg["sparse_topk_blocks"], dtype=torch.int32
+             )
+         else:
+             self.topk_indices_buffer = None
+diff --git a/vllm/models/minimax_m3/nvidia/sparse_attention_msa.py b/vllm/models/minimax_m3/nvidia/sparse_attention_msa.py
+index 8666eaa28e70..aaf04f34d0bb 100644
+--- a/vllm/models/minimax_m3/nvidia/sparse_attention_msa.py
++++ b/vllm/models/minimax_m3/nvidia/sparse_attention_msa.py
+@@ -10,6 +10,7 @@
+ import torch
+ 
+ from vllm.forward_context import get_forward_context
++from vllm.models.minimax_m3.common.indexer import as_head_major_topk_indices
+ from vllm.models.minimax_m3.common.ops.sparse_attn import (
+     SPARSE_BLOCK_SIZE,
+     minimax_m3_sparse_attn_decode,
+@@ -39,10 +40,10 @@ def forward(
+ 
+         nd = main_md.num_decode_tokens
+         num_tokens = main_md.num_actual_tokens
+-        # Indexer top-k from the shared token-major buffer [total_q, H, MK]; the
+-        # kernels want [H, tokens, MK], so slice tokens on dim 0 then transpose.
+         topk = layer.topk_indices_buffer  # type: ignore[attr-defined]
+         assert topk is not None
++        layout = layer.indexer.topk_indices_buffer_layout  # type: ignore[attr-defined]
++        topk = as_head_major_topk_indices(topk, num_tokens, layout)
+         hd = self.head_size
+         q = query[:num_tokens].view(-1, self.num_heads, hd)
+         out = output[:num_tokens].view(-1, self.num_heads, hd)
+@@ -59,7 +60,7 @@ def forward(
+             minimax_m3_sparse_attn_decode(
+                 q[:nd],
+                 kv_cache,
+-                topk[:nd].transpose(0, 1),
++                topk[:, :nd],
+                 d.block_table,
+                 d.seq_lens,
+                 self.num_kv_heads,
+@@ -79,9 +80,7 @@ def forward(
+ 
+             p = main_md.prefill
+             assert p is not None
+-            # [H, prefill, MK] transposed view; build_k2q_csr consumes the
+-            # strided view directly (topK stays innermost-contiguous).
+-            prefill_topk = topk[nd:num_tokens].transpose(0, 1)
++            prefill_topk = topk[:, nd:num_tokens]
+             qp = q[nd:]
+             k_cache, v_cache = kv_cache.split(self.head_size, dim=-1)
+             k2q_row_ptr, k2q_q_indices, schedule = build_k2q_csr(

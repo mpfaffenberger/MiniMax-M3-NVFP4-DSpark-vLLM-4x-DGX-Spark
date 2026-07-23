@@ -1,0 +1,10 @@
+.env
+.runtime/
+__pycache__/
+*.py[cod]
+*.log
+results/
+.DS_Store
+
+# Keep the checksum-verified PyO3 extension required by MiniMax tool calling.
+!mods/install-vllm-rust-tool-parser/_rust_tool_parser.abi3.so

@@ -1,0 +1,74 @@
+# NVIDIA MiniMax M3 NVFP4 + NVIDIA DSpark on 4x DGX Spark.
+# Target: nvidia/MiniMax-M3-NVFP4 (native vLLM ModelOpt checkpoint)
+# Draft:  nvidia/MiniMax-M3-DSpark (block size 8)
+#
+# This is intentionally separate from the SparkArena recipe. The optional
+# MiniMax-M3 Rust tool-parser extension is installed by a checksum-verified mod.
+recipe_version: "1"
+name: NVIDIA-MiniMax-M3-NVFP4-DSpark-k8-fp8kv
+description: NVIDIA MiniMax M3 NVFP4 with NVIDIA DSpark k=8, TP=4 GB10 cluster
+
+model: nvidia/MiniMax-M3-NVFP4
+container: vllm-node-tf5-minimax-m3-dspark-20260722
+cluster_only: true
+solo_only: false
+
+build_args:
+  - --tf5
+  - --vllm-ref
+  - "b44311b6ef9232d1f345f4b55adef7abc223f0e7"
+
+mods:
+  - mods/fix-nccl-2.30.4
+  - mods/fix-minimax-m3-nvfp4-correctness-48929
+  - mods/install-vllm-rust-tool-parser
+  - mods/fix-minimax-m3-streaming-reasoning
+  - mods/rename-reasoning-to-reasoning-content
+  - mods/guard-minimax-m3-modelopt-fp4
+
+defaults:
+  port: 8000
+  host: 0.0.0.0
+  served_model_name: nvidia/MiniMax-M3-NVFP4
+  tensor_parallel: 4
+  gpu_memory_utilization: 0.80
+  max_model_len: 262144
+  max_num_batched_tokens: 8192
+  max_num_seqs: 4
+  target_model: /root/.cache/huggingface/hub/models--nvidia--MiniMax-M3-NVFP4/snapshots/901464083161bf8612a29ff7ad29914cd4ab4a85
+  draft_model: /root/.cache/huggingface/hub/models--nvidia--MiniMax-M3-DSpark/snapshots/e82db0e1895bc4e0c339ce670b2b553899a57f59
+  num_speculative_tokens: 8
+
+env:
+  HF_HUB_OFFLINE: "1"
+  TRANSFORMERS_OFFLINE: "1"
+  PYTORCH_CUDA_ALLOC_CONF: expandable_segments:False
+  NCCL_CUMEM_ENABLE: "0"
+  NCCL_NVLS_ENABLE: "0"
+  TORCH_CUDA_ARCH_LIST: 12.1a
+  VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS: "1800"
+  VLLM_ALLOW_LONG_MAX_MODEL_LEN: "1"
+  VLLM_SERVER_DEV_MODE: "1"
+  VLLM_LOGGING_LEVEL: INFO
+
+command: |
+  vllm serve {target_model} \
+      --served-model-name {served_model_name} \
+      --trust-remote-code \
+      --block-size 128 \
+      --kv-cache-dtype fp8 \
+      --language-model-only \
+      --host {host} \
+      --port {port} \
+      -tp {tensor_parallel} \
+      --distributed-executor-backend ray \
+      --gpu-memory-utilization {gpu_memory_utilization} \
+      --max-model-len {max_model_len} \
+      --max-num-batched-tokens {max_num_batched_tokens} \
+      --max-num-seqs {max_num_seqs} \
+      --load-format instanttensor \
+      --enforce-eager \
+      --reasoning-parser minimax_m3 \
+      --enable-auto-tool-choice \
+      --tool-call-parser minimax_m3 \
+      --speculative-config '{{"method":"dspark","model":"{draft_model}","num_speculative_tokens":{num_speculative_tokens}}}'

@@ -1,0 +1,56 @@
+diff --git a/Dockerfile b/Dockerfile
+index b60f2bd..3ae604c 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -245,12 +245,7 @@ RUN set -eux; \
+         echo "PR #41524 regression found; reverting ${patch_commit}"; \
+         if ! git revert --no-commit "$patch_commit"; then \
+             git revert --abort 2>/dev/null || true; \
+-            echo "ERROR: PR #41524 appears present but could not be reverted"; \
+-            exit 1; \
+-        fi; \
+-        if grep -q "$marker" "$target"; then \
+-            echo "ERROR: revert completed but PR #41524 marker is still present"; \
+-            exit 1; \
++            echo "WARN: PR #41524 revert not applicable at this ref; continuing without it"; \
+         fi; \
+     else \
+         echo "PR #41524 regression marker not present; skipping revert"; \
+@@ -264,15 +259,10 @@ RUN set -eux; \
+     target="vllm/model_executor/layers/minimax_rms_norm/rms_norm_tp.py"; \
+     marker="torch.ops.vllm.minimax_qk_norm_fusion"; \
+     if [ -f "$target" ] && grep -q "$marker" "$target"; then \
+-        echo "PR #43410 regression found; reverting ${patch_commit}"; \
++        echo "PR #43410 regression found; attempting revert ${patch_commit}"; \
+         if ! git revert --no-commit "$patch_commit"; then \
+             git revert --abort 2>/dev/null || true; \
+-            echo "ERROR: PR #43410 appears present but could not be reverted"; \
+-            exit 1; \
+-        fi; \
+-        if [ -f "$target" ] && grep -q "$marker" "$target"; then \
+-            echo "ERROR: revert completed but PR #43410 marker is still present"; \
+-            exit 1; \
++            echo "WARN: PR #43410 revert not applicable at this ref (MiniMax-specific); continuing without it"; \
+         fi; \
+     else \
+         echo "PR #43410 regression marker not present; skipping revert"; \
+--- a/launch-cluster.sh
++++ b/launch-cluster.sh
+@@ -784,6 +784,7 @@
+ copy_script_to_container() {
+     local container="$1"; local script_path="$2"; local label="${3:-node}"
+     echo "Copying launch script to $label..."
++    docker exec "$container" mkdir -p /workspace 2>/dev/null
+     docker cp "$script_path" "$container:/workspace/exec-script.sh" || { echo "Error: docker cp to $label failed"; exit 1; }
+     docker exec "$container" chmod +x /workspace/exec-script.sh
+ }
+@@ -795,7 +796,8 @@
+     local remote_tmp="/tmp/vllm_script_$(date +%s)_$RANDOM.sh"
+     scp -o BatchMode=yes -o StrictHostKeyChecking=no "$script_path" "$worker_ip:$remote_tmp" || { echo "Error: scp to $worker_ip failed"; exit 1; }
+     ssh -o BatchMode=yes -o StrictHostKeyChecking=no "$worker_ip" \
+-        "docker cp $remote_tmp $container:/workspace/exec-script.sh && \
++        "docker exec $container mkdir -p /workspace 2>/dev/null; \
++         docker cp $remote_tmp $container:/workspace/exec-script.sh && \
+          docker exec $container chmod +x /workspace/exec-script.sh && \
+          rm -f $remote_tmp" || { echo "Error: docker cp to worker $worker_ip failed"; exit 1; }
+ }

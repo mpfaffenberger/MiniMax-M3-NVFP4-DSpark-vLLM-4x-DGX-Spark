@@ -1,0 +1,25 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+      - name: Bash syntax
+        run: bash -n scripts/*.sh mods/*/run.sh
+      - name: ShellCheck wrappers
+        run: shellcheck scripts/*.sh
+      - name: Python syntax
+        run: python3 -m py_compile scripts/*.py
+      - name: Verify Rust parser artifact
+        run: |
+          echo 'cfda01f2ba3ebdb4b7970c0b140be8874eba5f43087682424e50e141fd51df78  mods/install-vllm-rust-tool-parser/_rust_tool_parser.abi3.so' | sha256sum --check
