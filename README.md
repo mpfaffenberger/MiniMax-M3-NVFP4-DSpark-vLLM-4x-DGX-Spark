@@ -40,25 +40,8 @@ notes live in [`benchmarks/2026-07-23-validated-checkpoint.md`](benchmarks/2026-
 
 ## Architecture
 
-```text
-OpenAI clients
-      │ HTTP :8000
-      ▼
-┌───────────────────────┐      Ray control + NCCL collectives
-│ DGX Spark 0 (head)    │◄────────────────────────────────────┐
-│ vLLM API + TP rank 0  │                                     │
-└───────────────────────┘                                     │
-         ▲                 ┌───────────────────────┐           │
-         ├─────────────────│ DGX Spark 1 / rank 1 │───────────┤
-         ├─────────────────│ DGX Spark 2 / rank 2 │───────────┤
-         └─────────────────│ DGX Spark 3 / rank 3 │───────────┘
-                           └───────────────────────┘
-
-Each decode step:
-MiniMax-M3-DSpark drafts up to 8 tokens → MiniMax-M3-NVFP4 verifies → accept/reject
-```
-
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the less-crayon version.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the deployment architecture,
+request path, tensor-parallel topology, and memory profile.
 
 ## Hardware
 
