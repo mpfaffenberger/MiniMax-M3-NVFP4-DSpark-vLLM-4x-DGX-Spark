@@ -21,6 +21,7 @@ required = (
     '--reasoning-parser minimax_m3',
     '--tool-call-parser minimax_m3',
     '--kv-cache-dtype fp8',
+    '"cudagraph_mode":"PIECEWISE"',
 )
 missing = [marker for marker in required if marker not in text]
 if missing:
