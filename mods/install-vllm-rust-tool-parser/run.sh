@@ -2,7 +2,7 @@
 # Install vLLM's MiniMax-M3 PyO3 tool-parser extension built from b44311b6.
 set -euo pipefail
 
-readonly EXPECTED_SHA256="4c00bb276904de5a12d27b70eff97250eca54716559e06b042f17b6cc827e944"
+readonly EXPECTED_SHA256="346e6e0a64613c20decc0cf97bfcdd1a02b18b836d650e23097697c4a80af275"
 readonly MOD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SOURCE="${MOD_DIR}/_rust_tool_parser.abi3.so"
 readonly SITE_PACKAGES="$(python3 -c 'import site; print(site.getsitepackages()[0])')"
@@ -59,7 +59,8 @@ streamed = []
 for chunk in (
     "]<]minimax[>[<tool_call>\n"
     "]<]minimax[>[<invoke name=\"get_weather\">\n",
-    "]<]minimax[>[<city>New York]<]minimax[>[</city>\n",
+    "]<]minimax[>[<city>New ",
+    "York]<]minimax[>[</city>\n",
     "]<]minimax[>[<units>metric]<]minimax[>[</units>\n",
     "]<]minimax[>[</invoke>\n]<]minimax[>[</tool_call>",
 ):
@@ -69,8 +70,13 @@ for chunk in (
 stream_parser.finish()
 assert streamed == [
     ("get_weather", ""),
-    (None, '{"city":"New York"'),
-    (None, ',"units":"metric"'),
+    (None, '{"city":"'),
+    (None, "New "),
+    (None, "York"),
+    (None, '"'),
+    (None, ',"units":"'),
+    (None, "metric"),
+    (None, '"'),
     (None, "}"),
 ], streamed
 

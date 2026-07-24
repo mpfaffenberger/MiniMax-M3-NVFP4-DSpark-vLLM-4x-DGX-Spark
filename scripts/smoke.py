@@ -173,7 +173,7 @@ def main() -> None:
         },
     )
     assert call_id and name == "get_weather", (call_id, name, fragments)
-    assert len(fragments) >= 3, fragments
+    assert len(fragments) >= 6, fragments
     streamed_arguments = json.loads("".join(fragments))
     assert streamed_arguments["city"] == "Paris, France", streamed_arguments
     assert streamed_arguments["units"] == "metric", streamed_arguments

@@ -48,7 +48,7 @@ for mod in "${ROOT}"/mods/*; do
     cp -a "${mod}" "${RUNTIME_DIR}/mods/"
 done
 
-expected="4c00bb276904de5a12d27b70eff97250eca54716559e06b042f17b6cc827e944"
+expected="346e6e0a64613c20decc0cf97bfcdd1a02b18b836d650e23097697c4a80af275"
 actual="$(sha256sum "${RUNTIME_DIR}/mods/install-vllm-rust-tool-parser/_rust_tool_parser.abi3.so" | awk '{print $1}')"
 [[ "${actual}" == "${expected}" ]] || {
     echo "Rust parser checksum mismatch: ${actual}" >&2

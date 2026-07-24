@@ -1,0 +1,462 @@
+diff --git a/rust/src/parser/src/tool/minimax_m3.rs b/rust/src/parser/src/tool/minimax_m3.rs
+index ccaa28d34..2f1c06ae2 100644
+--- a/rust/src/parser/src/tool/minimax_m3.rs
++++ b/rust/src/parser/src/tool/minimax_m3.rs
+@@ -43,6 +43,12 @@ enum MinimaxM3Mode {
+         emitted_params: usize,
+         element_scan: ElementScanState,
+     },
++    StringParameter {
++        function_name: String,
++        parameter_name: String,
++        tool_index: usize,
++        emitted_params: usize,
++    },
+     InvokeTail {
+         tool_index: usize,
+         emitted_params: usize,
+@@ -56,6 +62,9 @@ enum MinimaxM3Event {
+     Text { len: usize },
+     ToolBlockStart,
+     InvokeStart { name: String },
++    StringParameterStart { name: String },
++    StringParameterContent { len: usize },
++    StringParameterEnd,
+     Parameter(ParamElement),
+     InvokeTailStart,
+     InvokeEnd,
+@@ -105,8 +114,9 @@ enum MinimaxM3Event {
+ /// ```
+ ///
+ /// MiniMax M3 emits the namespace marker `]<]minimax[>[` before each structural
+-/// tag. The tool name is emitted after the invoke header, and arguments are
+-/// emitted at completed top-level parameter boundaries.
++/// tag. The tool name is emitted after the invoke header. Unambiguous
++/// schema-typed top-level strings stream continuously with JSON escaping;
++/// other arguments are emitted at completed top-level parameter boundaries.
+ pub struct MinimaxM3ToolParser {
+     buffer: String,
+     mode: MinimaxM3Mode,
+@@ -114,6 +124,13 @@ pub struct MinimaxM3ToolParser {
+     tool_parameters: ToolSchemas,
+ }
+ 
++/// Escape one raw string-body fragment without adding JSON string delimiters.
++fn escape_json_string_fragment(fragment: &str) -> Result<String> {
++    let quoted = serde_json::to_string(fragment)
++        .map_err(|error| parsing_failed!("failed to serialize string argument: {}", error))?;
++    Ok(quoted[1..quoted.len() - 1].to_string())
++}
++
+ impl MinimaxM3ToolParser {
+     /// Create a MiniMax M3 tool parser.
+     pub fn new(tools: &[Tool]) -> Self {
+@@ -147,6 +164,72 @@ impl MinimaxM3ToolParser {
+                     element_scan: ElementScanState::default(),
+                 };
+             }
++            MinimaxM3Event::StringParameterStart {
++                name: parameter_name,
++            } => {
++                let MinimaxM3Mode::Invoke {
++                    name: function_name,
++                    tool_index,
++                    emitted_params,
++                    ..
++                } = std::mem::replace(&mut self.mode, MinimaxM3Mode::Done)
++                else {
++                    return Err(parsing_failed!(
++                        "MiniMax M3 string parameter without an active invoke"
++                    ));
++                };
++                let key = serde_json::to_string(&parameter_name).map_err(|error| {
++                    parsing_failed!("failed to serialize argument name: {}", error)
++                })?;
++                let separator = if emitted_params == 0 { "{" } else { "," };
++                output.push_call(ToolCallDelta {
++                    tool_index,
++                    name: None,
++                    arguments: format!("{separator}{key}:\""),
++                });
++                self.mode = MinimaxM3Mode::StringParameter {
++                    function_name,
++                    parameter_name,
++                    tool_index,
++                    emitted_params: emitted_params + 1,
++                };
++            }
++            MinimaxM3Event::StringParameterContent { len: consumed_len } => {
++                let MinimaxM3Mode::StringParameter { tool_index, .. } = &self.mode else {
++                    return Err(parsing_failed!(
++                        "MiniMax M3 string content without an active string parameter"
++                    ));
++                };
++                output.push_call(ToolCallDelta {
++                    tool_index: *tool_index,
++                    name: None,
++                    arguments: escape_json_string_fragment(&self.buffer[..consumed_len])?,
++                });
++            }
++            MinimaxM3Event::StringParameterEnd => {
++                let MinimaxM3Mode::StringParameter {
++                    function_name,
++                    tool_index,
++                    emitted_params,
++                    ..
++                } = std::mem::replace(&mut self.mode, MinimaxM3Mode::Done)
++                else {
++                    return Err(parsing_failed!(
++                        "MiniMax M3 string end without an active string parameter"
++                    ));
++                };
++                output.push_call(ToolCallDelta {
++                    tool_index,
++                    name: None,
++                    arguments: "\"".to_string(),
++                });
++                self.mode = MinimaxM3Mode::Invoke {
++                    name: function_name,
++                    tool_index,
++                    emitted_params,
++                    element_scan: ElementScanState::default(),
++                };
++            }
+             MinimaxM3Event::Parameter(element) => {
+                 let MinimaxM3Mode::Invoke {
+                     name,
+@@ -240,9 +323,13 @@ impl ToolParser for MinimaxM3ToolParser {
+     fn parse_into(&mut self, chunk: &str, output: &mut ToolParserOutput) -> Result<()> {
+         self.buffer.push_str(chunk);
+ 
+-        while let Some((event, consumed_len)) = parse_buffered_event(&self.buffer, |input| {
+-            parse_next_minimax_m3_event(input, &mut self.mode)
+-        })? {
++        loop {
++            let parsed = parse_buffered_event(&self.buffer, |input| {
++                parse_next_minimax_m3_event(input, &mut self.mode, &self.tool_parameters)
++            })?;
++            let Some((event, consumed_len)) = parsed else {
++                break;
++            };
+             self.apply_event(event, output)?;
+             self.buffer.drain(..consumed_len);
+         }
+@@ -261,7 +348,9 @@ impl ToolParser for MinimaxM3ToolParser {
+                     return Err(parsing_failed!("incomplete MiniMax M3 tool call"));
+                 }
+             }
+-            MinimaxM3Mode::Invoke { .. } | MinimaxM3Mode::InvokeTail { .. } => {
++            MinimaxM3Mode::Invoke { .. }
++            | MinimaxM3Mode::StringParameter { .. }
++            | MinimaxM3Mode::InvokeTail { .. } => {
+                 return Err(parsing_failed!("incomplete MiniMax M3 invoke"));
+             }
+             MinimaxM3Mode::Done => {}
+@@ -281,11 +370,17 @@ impl ToolParser for MinimaxM3ToolParser {
+ fn parse_next_minimax_m3_event(
+     input: &mut MinimaxM3Input<'_>,
+     mode: &mut MinimaxM3Mode,
++    tool_parameters: &ToolSchemas,
+ ) -> ModalResult<MinimaxM3Event> {
+     match mode {
+         MinimaxM3Mode::Text => parse_text_event(input),
+         MinimaxM3Mode::ToolBlock => parse_tool_block_event(input),
+-        MinimaxM3Mode::Invoke { element_scan, .. } => parse_invoke_event(input, element_scan),
++        MinimaxM3Mode::Invoke {
++            name, element_scan, ..
++        } => parse_invoke_event(input, element_scan, tool_parameters, name),
++        MinimaxM3Mode::StringParameter { parameter_name, .. } => {
++            parse_string_parameter_event(input, parameter_name)
++        }
+         MinimaxM3Mode::InvokeTail {
+             invoke_end_scan, ..
+         } => invoke_tail_end_event(input, invoke_end_scan),
+@@ -340,15 +435,60 @@ fn invoke_start_event(input: &mut MinimaxM3Input<'_>) -> ModalResult<MinimaxM3Ev
+ fn parse_invoke_event(
+     input: &mut MinimaxM3Input<'_>,
+     element_scan: &mut ElementScanState,
++    tool_parameters: &ToolSchemas,
++    function_name: &str,
+ ) -> ModalResult<MinimaxM3Event> {
+     alt((
+         invoke_end_event,
++        |input: &mut MinimaxM3Input<'_>| {
++            string_parameter_start_event(input, tool_parameters, function_name)
++        },
+         |input: &mut MinimaxM3Input<'_>| parameter_event(input, element_scan),
+         invoke_tail_start_event,
+     ))
+     .parse_next(input)
+ }
+ 
++/// Start streaming one unambiguous schema-typed string parameter.
++fn string_parameter_start_event(
++    input: &mut MinimaxM3Input<'_>,
++    tool_parameters: &ToolSchemas,
++    function_name: &str,
++) -> ModalResult<MinimaxM3Event> {
++    let _ = ws0.parse_next(input)?;
++    let name = partial_open_element_tag(input)?;
++    if !tool_parameters.is_string_param(function_name, name) {
++        return Err(ErrMode::Backtrack(ContextError::new()));
++    }
++    Ok(MinimaxM3Event::StringParameterStart {
++        name: name.to_string(),
++    })
++}
++
++/// Stream string content or consume its matching XML closing tag.
++///
++/// Already-emitted content cannot be retracted if later XML is malformed.
++/// A namespace marker other than the matching close fails before any marker
++/// bytes are emitted as arguments.
++fn parse_string_parameter_event(
++    input: &mut MinimaxM3Input<'_>,
++    parameter_name: &str,
++) -> ModalResult<MinimaxM3Event> {
++    let text = **input;
++    let close_tag = format!("{ELEMENT_END_START}{parameter_name}>");
++    if text.starts_with(&close_tag) {
++        literal(close_tag.as_str()).void().parse_next(input)?;
++        return Ok(MinimaxM3Event::StringParameterEnd);
++    }
++    if close_tag.starts_with(text) {
++        return incomplete();
++    }
++    if text.starts_with(NAMESPACE) {
++        return malformed();
++    }
++    safe_text_len(input, NAMESPACE).map(|len| MinimaxM3Event::StringParameterContent { len })
++}
++
+ /// Parse one complete top-level MiniMax M3 parameter.
+ fn parameter_event(
+     input: &mut MinimaxM3Input<'_>,
+@@ -462,6 +602,22 @@ fn take_complete_parameter(
+     }
+ }
+ 
++/// Parse a MiniMax M3 opening element tag from partial streaming input.
++fn partial_open_element_tag<'i>(input: &mut MinimaxM3Input<'i>) -> ModalResult<&'i str> {
++    let name = seq!(
++        _: literal(ELEMENT_START),
++        take_until(1.., ">"),
++        _: literal(">"),
++    )
++    .parse_next(input)?;
++
++    let name = name.0;
++    if name.starts_with('/') || name.trim().is_empty() {
++        return malformed();
++    }
++    Ok(name)
++}
++
+ /// Parse a MiniMax M3 parameter element.
+ fn parameter_element(input: &mut &str) -> ModalResult<ParamElement> {
+     let name = open_element_tag(input)?.to_string();
+@@ -574,7 +730,7 @@ mod tests {
+     use thiserror_ext::AsReport;
+ 
+     use super::{
+-        ELEMENT_END_START, ELEMENT_START, INVOKE_END, INVOKE_START, MinimaxM3ToolParser,
++        ELEMENT_END_START, ELEMENT_START, INVOKE_END, INVOKE_START, MinimaxM3ToolParser, NAMESPACE,
+         TOOL_CALL_END, TOOL_CALL_START, ToolParser,
+     };
+     use crate::tool::test_utils::{collect_stream, split_by_chars, test_tools};
+@@ -976,6 +1132,95 @@ mod tests {
+         assert_eq!(output.calls()[1].tool_index, 1);
+     }
+ 
++    #[test]
++    fn minimax_m3_streaming_string_escapes_chunks_and_preserves_whitespace() {
++        let mut parser = MinimaxM3ToolParser::new(&m3_test_tools());
++        parser.parse_chunk(TOOL_CALL_START).unwrap();
++        let output = parser.parse_chunk(&format!("{INVOKE_START} name=\"create_order\">")).unwrap();
++        assert_eq!(output.calls()[0].name.as_deref(), Some("create_order"));
++
++        let output = parser.parse_chunk(&format!("{ELEMENT_START}note>")).unwrap();
++        assert_eq!(output.calls()[0].arguments, r#"{"note":""#);
++
++        let pieces = [
++            "  leading\n",
++            "\"quoted\" \\",
++            "\u{0000} café 東京  trailing  ",
++        ];
++        let mut streamed = output.calls()[0].arguments.clone();
++        for piece in pieces {
++            let output = parser.parse_chunk(piece).unwrap();
++            assert_eq!(output.calls().len(), 1);
++            assert!(!output.calls()[0].arguments.contains(NAMESPACE));
++            streamed.push_str(&output.calls()[0].arguments);
++        }
++
++        let close = format!("{ELEMENT_END_START}note>");
++        let split_at = NAMESPACE.len() - 2;
++        let output = parser.parse_chunk(&close[..split_at]).unwrap();
++        assert!(output.calls().is_empty());
++        let output = parser.parse_chunk(&close[split_at..]).unwrap();
++        assert_eq!(output.calls()[0].arguments, "\"");
++        streamed.push_str(&output.calls()[0].arguments);
++
++        let output = parser.parse_chunk(&format!("{ELEMENT_START}user_id>4")).unwrap();
++        assert!(output.calls().is_empty());
++        let output = parser.parse_chunk(&format!("2{ELEMENT_END_START}user_id>")).unwrap();
++        assert_eq!(output.calls()[0].arguments, r#","user_id":42"#);
++        streamed.push_str(&output.calls()[0].arguments);
++
++        let output = parser.parse_chunk(INVOKE_END).unwrap();
++        assert_eq!(output.calls()[0].arguments, "}");
++        streamed.push_str(&output.calls()[0].arguments);
++
++        assert_eq!(
++            serde_json::from_str::<Value>(&streamed).unwrap(),
++            json!({
++                "note": "  leading\n\"quoted\" \\\u{0000} café 東京  trailing  ",
++                "user_id": 42,
++            })
++        );
++    }
++
++    #[test]
++    fn minimax_m3_streaming_large_string_emits_continuously() {
++        let mut parser = MinimaxM3ToolParser::new(&m3_test_tools());
++        parser
++            .parse_chunk(&format!(
++                "{TOOL_CALL_START}{INVOKE_START} name=\"create_order\">{ELEMENT_START}note>"
++            ))
++            .unwrap();
++
++        let piece = "0123456789abcdef".repeat(8);
++        let mut escaped = String::new();
++        for _ in 0..64 {
++            let output = parser.parse_chunk(&piece).unwrap();
++            assert_eq!(output.calls().len(), 1);
++            escaped.push_str(&output.calls()[0].arguments);
++        }
++        assert_eq!(escaped, piece.repeat(64));
++
++        let output = parser.parse_chunk(&format!("{ELEMENT_END_START}note>")).unwrap();
++        assert_eq!(output.calls()[0].arguments, "\"");
++    }
++
++    #[test]
++    fn minimax_m3_streaming_string_rejects_mismatched_close_without_leaking_tag() {
++        let mut parser = MinimaxM3ToolParser::new(&m3_test_tools());
++        let output = parser
++            .parse_chunk(&format!(
++                "{TOOL_CALL_START}{INVOKE_START} name=\"create_order\">\
++                 {ELEMENT_START}note>safe content"
++            ))
++            .unwrap();
++        assert!(output.calls().iter().all(|call| !call.arguments.contains(NAMESPACE)));
++
++        let mut output = ToolParserOutput::default();
++        let result = parser.parse_into(&format!("{ELEMENT_END_START}user_id>"), &mut output);
++        assert!(result.is_err());
++        assert!(output.calls().is_empty());
++    }
++
+     #[test]
+     fn minimax_m3_streaming_emits_name_then_completed_parameter_fragments() {
+         let mut parser = MinimaxM3ToolParser::new(&m3_test_tools());
+@@ -1032,11 +1277,11 @@ mod tests {
+             ))
+             .unwrap();
+ 
+-        let output = parser.parse_chunk(&format!("{ELEMENT_START}city>Seat")).unwrap();
++        let output = parser.parse_chunk(&format!("{ELEMENT_START}days>1")).unwrap();
+         assert!(output.calls().is_empty());
+ 
+         let mut output = ToolParserOutput::default();
+-        let result = parser.parse_into(&format!("tle{ELEMENT_END_START}days>"), &mut output);
++        let result = parser.parse_into(&format!("0{ELEMENT_END_START}city>"), &mut output);
+         assert!(result.is_err());
+         assert!(output.calls().is_empty());
+     }
+diff --git a/rust/src/parser/src/tool/parameters.rs b/rust/src/parser/src/tool/parameters.rs
+index 913ad815e..ce4d3db12 100644
+--- a/rust/src/parser/src/tool/parameters.rs
++++ b/rust/src/parser/src/tool/parameters.rs
+@@ -97,6 +97,12 @@ impl ToolSchemas {
+         converted
+     }
+ 
++    /// Return whether one parameter has the unambiguous scalar string type.
++    pub(super) fn is_string_param(&self, function_name: &str, name: &str) -> bool {
++        self.tools.get(function_name).and_then(|schema| schema.params.get(name))
++            == Some(&JsonParamType::String)
++    }
++
+     /// Convert one parameter value for one named tool.
+     pub(super) fn convert_param_with_schema<P>(
+         &self,
+@@ -696,6 +702,27 @@ mod tests {
+         assert_eq!(converted.get("unknown_param"), Some(&json!("42")));
+     }
+ 
++    #[test]
++    fn identifies_only_unambiguous_scalar_string_params_for_streaming() {
++        let schemas = ToolSchemas::from_tools(&[test_tool(
++            "write",
++            json!({
++                "type": "object",
++                "properties": {
++                    "content": { "type": "string" },
++                    "nullable": { "type": ["string", "null"] },
++                    "count": { "type": "integer" }
++                }
++            }),
++        )]);
++
++        assert!(schemas.is_string_param("write", "content"));
++        assert!(!schemas.is_string_param("write", "nullable"));
++        assert!(!schemas.is_string_param("write", "count"));
++        assert!(!schemas.is_string_param("write", "missing"));
++        assert!(!schemas.is_string_param("missing", "content"));
++    }
++
+     #[test]
+     fn string_param_preserves_literal_null_text() {
+         // A `string`-typed param whose value is the literal text "null"/"NULL"
+diff --git a/tests/tool_parsers/test_minimax_m3_tool_parser.py b/tests/tool_parsers/test_minimax_m3_tool_parser.py
+index 887b0df86..53bf2a9a8 100644
+--- a/tests/tool_parsers/test_minimax_m3_tool_parser.py
++++ b/tests/tool_parsers/test_minimax_m3_tool_parser.py
+@@ -274,6 +274,36 @@ def test_streaming_emits_name_then_completed_parameter_fragments(parser):
+     }
+ 
+ 
++def test_streaming_string_body_escapes_fragments_and_holds_split_close(parser):
++    body_parts = ["  leading\n", '"quoted" \\', "\x00 café 東京  trailing  "]
++    close = f"{NS}</note>"
++    results = _feed(
++        parser,
++        [
++            f"{NS}<tool_call>",
++            f'{NS}<invoke name="create_order">',
++            f"{NS}<note>",
++            *body_parts,
++            close[: len(NS) - 2],
++            close[len(NS) - 2 :],
++            f"{NS}</invoke>",
++            f"{NS}</tool_call>",
++        ],
++    )
++
++    calls = [call for result in results for call in result.tool_calls or []]
++    assert calls[0].function.name == "create_order"
++    argument_deltas = [call.function.arguments for call in calls]
++    assert argument_deltas[1] == '{"note":"'
++    assert argument_deltas[-2:] == ['"', "}"]
++    assert len(argument_deltas) >= 7
++    assert all(NS not in delta for delta in argument_deltas)
++    assert json.loads("".join(argument_deltas)) == {"note": "".join(body_parts)}
++    assert json.loads(parser.streamed_args_for_tool[0]) == {
++        "note": "".join(body_parts)
++    }
++
++
+ def test_streaming_nested_tool_call(parser):
+     tool_call_text = build_order_call()
+     results = _feed(

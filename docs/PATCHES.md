@@ -24,12 +24,13 @@ Installs `vllm._rust_tool_parser`, built from vLLM commit
 PyO3 ABI3. Artifact SHA-256:
 
 ```text
-4c00bb276904de5a12d27b70eff97250eca54716559e06b042f17b6cc827e944
+346e6e0a64613c20decc0cf97bfcdd1a02b18b836d650e23097697c4a80af275
 ```
 
 The installer imports the module, validates incremental name/argument deltas,
-and parses a typed MiniMax tool-call fixture. The source patch streams at safe,
-completed top-level parameter boundaries while retaining nested XML conversion.
+and parses a typed MiniMax tool-call fixture. Source patches stream exact
+schema-typed top-level strings continuously (including large `create_file`
+content) and retain completed-boundary buffering for typed or nested XML values.
 Rebuild provenance and patch checksums are in the mod's README.
 
 ## `fix-minimax-m3-streaming-reasoning`

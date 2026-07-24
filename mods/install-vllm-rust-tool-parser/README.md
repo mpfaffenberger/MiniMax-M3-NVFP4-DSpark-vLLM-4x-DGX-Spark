@@ -11,9 +11,11 @@ the custom vLLM wheel.
 - Target: `aarch64-unknown-linux-gnu`
 - PyO3: `abi3-py38`, extension-module linkage
 - Artifact SHA-256:
-  `4c00bb276904de5a12d27b70eff97250eca54716559e06b042f17b6cc827e944`
+  `346e6e0a64613c20decc0cf97bfcdd1a02b18b836d650e23097697c4a80af275`
 - Incremental-streaming patch SHA-256:
   `116d7e69befe8204a7c54ef81fad823f1a32e70582d1d045bff786f2d92cd8a4`
+- Scalar-string streaming patch SHA-256:
+  `7745b940b7c06b29bb82a1f2976b543b51c83cd2b5959fbcf473fbfc898989cb`
 
 The extension was built on an aarch64 DGX Spark host and tested inside
 `vllm-node-tf5-minimax-m3-dspark-20260722`, matching production Python 3.12.
@@ -26,6 +28,7 @@ From an exact checkout of the vLLM commit:
 
 ```bash
 git apply minimax-m3-incremental-streaming.patch
+git apply minimax-m3-string-streaming-on-top.patch
 cargo +1.95 build \
   --release \
   -p vllm-tool-parser-py \
@@ -47,7 +50,11 @@ installation. It imports the module, verifies incremental name/argument
 fragments, and parses the coalesced typed MiniMax-M3 JSON fixture before model
 launch.
 
-The patched parser emits the function name after a validated invoke header,
-then emits one fragment per completed top-level parameter and the final closing
-brace. Nested parameter subtrees remain buffered until structurally complete;
-this preserves typed conversion without building an XML-to-JSON chainsaw.
+The patched parser emits the function name after a validated invoke header.
+Exact schema-typed top-level strings then stream as escaped JSON body fragments,
+which keeps large `create_file.content` arguments moving continuously. Numbers,
+booleans, nullable unions, arrays, objects, unknown fields, and nested XML remain
+buffered until their top-level parameter is structurally complete. Whitespace,
+quotes, backslashes, control characters, and Unicode string content are
+preserved; MiniMax namespace marker prefixes are held back so closing tags never
+leak into arguments.

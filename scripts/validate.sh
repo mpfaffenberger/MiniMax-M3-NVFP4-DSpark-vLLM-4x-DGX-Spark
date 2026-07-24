@@ -70,9 +70,11 @@ echo "${build_metadata_sha}  ${ROOT}/container/build-metadata.yaml" | sha256sum 
 results_sha="0dc298fc7c57ca5de91ee066fa1155b14746b53f33cca4c39c139eabc7c511ed"
 echo "${results_sha}  ${ROOT}/results.csv" | sha256sum --check
 
-expected="4c00bb276904de5a12d27b70eff97250eca54716559e06b042f17b6cc827e944"
+expected="346e6e0a64613c20decc0cf97bfcdd1a02b18b836d650e23097697c4a80af275"
 parser_patch_sha="116d7e69befe8204a7c54ef81fad823f1a32e70582d1d045bff786f2d92cd8a4"
+string_patch_sha="7745b940b7c06b29bb82a1f2976b543b51c83cd2b5959fbcf473fbfc898989cb"
 echo "${expected}  ${ROOT}/mods/install-vllm-rust-tool-parser/_rust_tool_parser.abi3.so" | sha256sum --check
 echo "${parser_patch_sha}  ${ROOT}/mods/install-vllm-rust-tool-parser/minimax-m3-incremental-streaming.patch" | sha256sum --check
+echo "${string_patch_sha}  ${ROOT}/mods/install-vllm-rust-tool-parser/minimax-m3-string-streaming-on-top.patch" | sha256sum --check
 [[ ${fail} -eq 0 ]] || exit 1
 echo "Static validation passed."
